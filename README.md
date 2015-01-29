@@ -12,7 +12,8 @@ All raw data that are required for successfully running the scripts are stored
 in "/Data".
 
 # /Derived
-All intermediate and final results will be stored in this folder.
+All intermediate and final results will be stored in this folder. Will be created
+upon running "/Scripts/Analysis/marker_preparation.R".
 
 # /Scripts
 ## Scripts/Analysis
