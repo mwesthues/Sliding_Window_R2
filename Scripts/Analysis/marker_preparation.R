@@ -11,7 +11,6 @@ pkgTest("ggplot2")
 # PREPARATION OF PHENOTYPIC DATA ------------------------------------------
 load(file = "./Data/genotypes")
 init_hybrids <- gsub(pattern = "DF_", replacement = "", x = genotypes)
-
 # Remove hybrids whose genotypes were not genotyped.
 no_marker <- c("812", "1309", "1310", "1311", "1312")
 ind_dent <- which(unlist(lapply(X = strsplit(x = init_hybrids, split = "_"), 
@@ -19,7 +18,7 @@ ind_dent <- which(unlist(lapply(X = strsplit(x = init_hybrids, split = "_"),
 ind_flint <- which(unlist(lapply(X = strsplit(x = init_hybrids, split = "_"), 
                                  FUN = "[[", 2)) %in% no_marker)
 ind <- union(ind_dent, ind_flint)
-clean_hybrid <- init_hybrids[-ind]
+kernel_df <- kernel_df[-ind, ]
 
 # Replace the old genotype (prior to "=" sign) with the new genotype (after
 # the "=" sign). The latter genotypes are the subsequent generation of the 
@@ -28,24 +27,31 @@ repl_marker <- c("1307" = "387", "1308" = "394", "1313" = "430",
                  "1314" = "429", "4508" = "548", "4509" = "545",
                  "4510" = "724", "4511" = "725", "4512" = "727", 
                  "4513" = "431")
-dent <- unlist(lapply(X = strsplit(as.character(clean_hybrid),
+dent <- unlist(lapply(X = strsplit(as.character(kernel_df$Hybrid),
                                    split = "_"), FUN = "[[", 1))
 dent_repl <- unname(repl_marker[dent[dent %in% names(repl_marker)]])
 dent[dent %in% names(repl_marker)] <- dent_repl
-flint <- unlist(lapply(X = strsplit(as.character(clean_hybrid), 
+flint <- unlist(lapply(X = strsplit(as.character(kernel_df$Hybrid), 
                                     split = "_"), FUN = "[[", 2))
 flint_repl <- unname(repl_marker[flint[flint %in% names(repl_marker)]])
 flint[flint %in% names(repl_marker)] <- flint_repl
 hybrid <- paste(dent, flint, sep = "_")
+kernel_df$Hybrid <- as.factor(hybrid)
+kernel_df$Dent <- as.factor(dent)
+kernel_df$Flint <- as.factor(flint)
+kernel_df <- kernel_df[c("Hybrid", "Dent", "Flint", "KTM", "KTS")]
 dent_parents <- unique(dent)
 flint_parents <- unique(flint)
 
+# Matrix with phenotypic data.
+kernel_matrix <- as.matrix(kernel_df[, c("KTM", "KTS")])
+rownames(kernel_matrix) <- as.character(kernel_df$Hybrid)
 
 
 # MARKER MATRIX PREPARATION -----------------------------------------------
 # Load data frame with meta information on marker names and their positions in 
 # the genome.
-marker_map <- read.table("./Data/marker_map.txt", header = TRUE, sep = "\t")
+marker_map <- read.table("./Server/marker_map.txt", header = TRUE, sep = "\t")
 marker_map <- marker_map[complete.cases(marker_map), ]
 marker_map <- marker_map[marker_map$chromosome != 0, ]
 map_marker_names <- as.character(marker_map[, "markername"])
@@ -55,11 +61,15 @@ marker_map$markername <- map_marker_names
 
 ######################### PREPARING MARKER DATA ###############################
 # Load the marker data.
-x_marker <- read.table(file = "./Data/marker_sample_matrix_FWD.txt", 
+x_marker <- read.table(file = paste0("/home/westhues/PhD/Optimal/", 
+                                     "20140508_OPTIMAL_MW/data_FWD/",
+                                     "marker_sample_matrix_FWD.txt"), 
                        header = TRUE, sep = "\t")
 
 # Load the meta data on samples from the UHOH database.
-x_sample <- read.table(file = "./Data/collect_samples.txt",
+x_sample <- read.table(file = paste0("/home/westhues/PhD/Optimal/",
+                                     "20140508_OPTIMAL_MW/",
+                                     "collect_samples.txt"),
                        header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 
 x_sample$id.GTP <- as.factor(x_sample$id.GTP)
@@ -144,9 +154,8 @@ call_dent_names <- callfreq.fun(x = dent_init_markmat, output = "markerNames",
                                 callThresh = callfreq)
 call_flint_names <- callfreq.fun(x = flint_init_markmat, 
                                  output = "markerNames", callThresh = callfreq)
-call_mut_names <- intersect(call_dent_names, call_flint_names)
-dent_cfreq_mat <- dent_init_markmat[, call_mut_names]
-flint_cfreq_mat <- flint_init_markmat[, call_mut_names]
+dent_cfreq_mat <- dent_init_markmat[, call_dent_names]
+flint_cfreq_mat <- flint_init_markmat[, call_flint_names]
 
 
 # Remove markers without any information as well as markers that are 
@@ -155,8 +164,6 @@ poly_dent_names <- maf.fun(x = dent_cfreq_mat, output = "markerNames",
                            mafThresh = maf)
 poly_flint_names <- maf.fun(x = flint_cfreq_mat, output = "markerNames",
                             mafThresh = maf)
-poly_names <- intersect(poly_dent_names, poly_flint_names)
-
 
 # Remove markers with high heterozygosity levels.
 het_dent_names <- heterozygosity.fun(x = dent_cfreq_mat, 
@@ -165,26 +172,30 @@ het_dent_names <- heterozygosity.fun(x = dent_cfreq_mat,
 het_flint_names <- heterozygosity.fun(x = flint_cfreq_mat, 
                                       output = "markerNames",
                                       hetThresh = snp_het)
-het_names <- intersect(het_dent_names, het_flint_names)
+
 
 # Combine the markers, which fullfill the quality check criteria in each group.
-crit_names <- intersect(poly_names, het_names)
-poly_mat <- init_markmat[, crit_names]
-poly_dent <- poly_mat[dent_parents, ]
-poly_flint <- poly_mat[flint_parents, ]
-
+crit_dent_names <- intersect(poly_dent_names, het_dent_names)
+crit_flint_names <- intersect(poly_flint_names, het_flint_names)
+crit_names <- union(crit_dent_names, crit_flint_names)
+poly_dent <- init_markmat[dent_parents, crit_dent_names]
+poly_flint <- init_markmat[flint_parents, crit_flint_names]
 
 # Get mutual major and minor genotypes for each locus in the combined Dent
 # and Flint data.
-geno_list <- maf.fun(x = poly_mat, output = "genoList")
+geno_dent_list <- maf.fun(x = poly_dent, output = "genoList")
+geno_flint_list <- maf.fun(x = poly_flint, output = "genoList")
+
 # Recode dent genotypes.
-dent_reco <- recode.fun(x = poly_dent, major = geno_list[["major_allele"]],
-                        minor = geno_list[["minor_allele"]],
+dent_reco <- recode.fun(x = poly_dent, 
+                        major = geno_dent_list[["major_allele"]],
+                        minor = geno_dent_list[["minor_allele"]],
                         major_coding = "XX", minor_coding = "YY", 
                         het_coding = "XY", na_coding = "??")
 # Recode flint genotypes.
-flint_reco <- recode.fun(poly_flint, major = geno_list[["major_allele"]],
-                         minor = geno_list[["minor_allele"]],
+flint_reco <- recode.fun(poly_flint, 
+                         major = geno_flint_list[["major_allele"]],
+                         minor = geno_flint_list[["minor_allele"]],
                          major_coding = "XX", minor_coding = "YY", 
                          het_coding = "XY", na_coding = "??")
 
@@ -213,12 +224,8 @@ m_list[["Flint"]][["marker"]] <- flint_marker
 m_list[["Flint"]][["map"]] <- flint_map
 
 
-dir.create(path = "./Derived/SNP_Data/kernel_data/all_lines/Imputed_SNPs",
-           recursive = TRUE)
-dir.create(path = paste0("./Derived/SNP_Data/kernel_data/all_lines/",
-                         "Imputed_SNPs/input"))
-dir.create(path = paste0("./Derived/SNP_Data/kernel_data/all_lines/",
-                         "Imputed_SNPs/output"))
+
+
 ################################ BEAGLE INPUT FILES ###########################
 type <- c("Dent", "Flint")
 chromosome <- seq_len(10)
@@ -290,6 +297,7 @@ for(i in type){
         message(paste(i, paste0("chr_", j)))
     }
 } 
+
 
 
 
@@ -430,12 +438,18 @@ flint_mat[flint_mat == "XY"] <- "AB"
 flint_mat[flint_mat == "YY"] <- "BB"
 
 
+# Marker matrices with markers that pass the quality check criteria in both
+# heterotic groups.
+mut_dent <- dent_mat[, intersect(colnames(dent_mat), colnames(flint_mat))]
+mut_flint <- flint_mat[, intersect(colnames(dent_mat), colnames(flint_mat))]
+
+
 #################### DUPLICATES (1st OPTION) ################################
 # Unique markers in Dent material for chromosome 1.
-cfMarkDent <- callfreq.fun(x = dent_mat, output = "markerNames",
+cfMarkDent <- callfreq.fun(x = mut_dent, output = "markerNames",
                            callThresh = 0.95)
-mafMarkDent <- maf.fun(x = dent_mat, output = "markerNames", mafThresh = 0.05)
-hetMarkDent <- heterozygosity.fun(x = dent_mat, output = "markerNames", 
+mafMarkDent <- maf.fun(x = mut_dent, output = "markerNames", mafThresh = 0.05)
+hetMarkDent <- heterozygosity.fun(x = mut_dent, output = "markerNames", 
                                   hetThresh = 0.05)
 cfmafMarkDent <- intersect(intersect(cfMarkDent, mafMarkDent), hetMarkDent)
 curedMarkDent <- dent_mat[, cfmafMarkDent]
@@ -443,11 +457,11 @@ dent_map <- marker_map[marker_map$markername %in% cfmafMarkDent, ]
 
 
 # Unique markers in Flint material for chromosome 1.
-cfMarkFlint <- callfreq.fun(x = flint_mat, output = "markerNames",
+cfMarkFlint <- callfreq.fun(x = mut_flint, output = "markerNames",
                             callThresh = 0.95)
-mafMarkFlint <- maf.fun(x = flint_mat, output = "markerNames", 
+mafMarkFlint <- maf.fun(x = mut_flint, output = "markerNames", 
                         mafThresh = 0.05)
-hetMarkFlint <- heterozygosity.fun(x = flint_mat, output = "markerNames",
+hetMarkFlint <- heterozygosity.fun(x = mut_flint, output = "markerNames",
                                    hetThresh = 0.05)
 cfmafMarkFlint <- intersect(cfMarkFlint, mafMarkFlint)
 curedMarkFlint <- flint_mat[, cfmafMarkFlint]
@@ -456,7 +470,7 @@ flint_map <- marker_map[marker_map$markername %in% cfmafMarkFlint, ]
 
 mList <- lapply(X = seq_len(10), FUN = function(i){
     markMatFlint <- curedMarkFlint[, flint_map[flint_map$chromosome == i,
-                                               "markername"]]
+                                              "markername"]]
     duplMarkFlint <- dupfreqm.fun(x = markMatFlint, output = "names")
     uniqueMarkFlint <- colnames(markMatFlint)[!colnames(markMatFlint) %in%
                                                   duplMarkFlint]
@@ -465,7 +479,7 @@ mList <- lapply(X = seq_len(10), FUN = function(i){
         stop("Duplicated markers present")}
     
     markMatDent <- curedMarkDent[, dent_map[dent_map$chromosome == i,
-                                            "markername"]]
+                                           "markername"]]
     duplMarkDent <- dupfreqm.fun(x = markMatDent, output = "names")
     uniqueMarkDent <- colnames(markMatDent)[!colnames(markMatDent) %in% 
                                                 duplMarkDent]
@@ -490,7 +504,6 @@ mList <- lapply(X = seq_len(10), FUN = function(i){
 sum(unlist(lapply(mList, length)))
 
 
-dir.create(path = "./Derived/Plots")
 # Plot of unique markers per chromosome.
 centromeres = c(134400000, 92900000, 99700000, 105300000, 102300000, 49600000,
                 54600000, 49000000, 72200000, 50100000)
@@ -514,15 +527,11 @@ mtext("1st Option", cex = 1.5, outer = TRUE, col = "darkblue", font = 2)
 par(opar)
 dev.off()
 
-# Unique markers
-unq_marker <- unlist(mList)
-orig_map <- droplevels(marker_map[marker_map$markername %in% unq_marker, ])
-
 
 # MARKER MATRIX PREPARATION -----------------------------------------------
 # Concatenate the imputed marker matrices for dent and flint lines, 
 # respectively.
-imp_mat <- rbind(dent_mat, flint_mat)
+imp_mat <- rbind(mut_dent, mut_flint)
 ref_geno <- maf.fun(imp_mat[, unq_marker], output = "genoList")
 rec_dent <- recode.fun(x = imp_mat[dent_parents, unq_marker],
                        major = ref_geno[["major_allele"]],
@@ -535,18 +544,14 @@ rec_dent <- matrix(as.numeric(rec_dent),
 if(any(rec_dent == 999)) stop("Missing values despite imputation")
 
 rec_flint <- recode.fun(x = imp_mat[flint_parents, unq_marker],
-                        major = ref_geno[["major_allele"]],
-                        minor = ref_geno[["minor_allele"]],
-                        major_coding = 2, minor_coding = 0,
-                        het_coding = 1, na_coding = 999)
+                       major = ref_geno[["major_allele"]],
+                       minor = ref_geno[["minor_allele"]],
+                       major_coding = 2, minor_coding = 0,
+                       het_coding = 1, na_coding = 999)
 rec_flint <- matrix(as.numeric(rec_flint), 
-                    nrow = nrow(rec_flint), ncol = ncol(rec_flint),
-                    dimnames = dimnames(rec_flint))
+                   nrow = nrow(rec_flint), ncol = ncol(rec_flint),
+                   dimnames = dimnames(rec_flint))
 if(any(rec_flint == 999)) stop("Missing values despite imputation")
-
-# Map file with unique markers. 
-unq_map <- marker_map[marker_map$markername %in% unq_marker, ]
-
 
 # KINSHIP MATRIX STABILITY ------------------------------------------------
 # Rationale: Selected markers shall not be confounded when building the kinship
@@ -557,7 +562,8 @@ unq_map <- marker_map[marker_map$markername %in% unq_marker, ]
 # positions on the chromosome. If the correlation between the different 
 # kinship matrices is high, any of them can be used for our QTL analyses since
 # they reflect the same kinship among genotypes.
-
+unq_marker <- unlist(mList)
+unq_map <- droplevels(marker_map[marker_map$markername %in% unq_marker, ])
 # Select equi-distant markers for each chromosome.
 chr_list <- split(x = unq_map, f = list(unq_map$chromosome), drop = TRUE)
 
@@ -601,9 +607,9 @@ equi_flint_kin <- droplevels(equi_marker[equi_marker$Round == 1, ])
 # Generate lists of kinship matrices (one matrix for each chromosome) 
 # according to Rincent et al. (2014).
 dent_rincent <- rincent14.fun(markerMap = equi_dent_kin, genoMat = rec_dent)
-names(dent_rincent) <- paste0("Dent.", seq_len(10))
+names(dent_rincent) <- paste0("Chr.", seq_len(10))
 flint_rincent <- rincent14.fun(markerMap = equi_flint_kin, genoMat = rec_flint)
-names(flint_rincent) <- paste0("Flint.", seq_len(10))
+names(flint_rincent) <- paste0("Chr.", seq_len(10))
 K_chr <- c(dent_rincent, flint_rincent)
 saveRDS(object = K_chr, file = "./Derived/SNP_Data/K_Chr_Rincent2014")
 
