@@ -61,15 +61,11 @@ marker_map$markername <- map_marker_names
 
 ######################### PREPARING MARKER DATA ###############################
 # Load the marker data.
-x_marker <- read.table(file = paste0("/home/westhues/PhD/Optimal/", 
-                                     "20140508_OPTIMAL_MW/data_FWD/",
-                                     "marker_sample_matrix_FWD.txt"), 
+x_marker <- read.table(file = "./Data/marker_sample_matrix_FWD.txt", 
                        header = TRUE, sep = "\t")
 
 # Load the meta data on samples from the UHOH database.
-x_sample <- read.table(file = paste0("/home/westhues/PhD/Optimal/",
-                                     "20140508_OPTIMAL_MW/",
-                                     "collect_samples.txt"),
+x_sample <- read.table(file = "./Data/collect_samples.txt",
                        header = TRUE, sep = "\t", stringsAsFactors = FALSE)
 
 x_sample$id.GTP <- as.factor(x_sample$id.GTP)
